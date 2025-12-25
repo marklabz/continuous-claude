@@ -127,7 +127,7 @@ ${ledgerContent}`;
           additionalContext += `
 To mark an outcome:
 \`\`\`bash
-uv run python scripts/context_graph_mark.py --handoff <ID> --outcome SUCCEEDED|PARTIAL_PLUS|PARTIAL_MINUS|FAILED
+uv run python scripts/artifact_mark.py --handoff <ID> --outcome SUCCEEDED|PARTIAL_PLUS|PARTIAL_MINUS|FAILED
 \`\`\`
 `;
         }

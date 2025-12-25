@@ -98,7 +98,7 @@ async function main() {
     }
 
     // Always trigger indexing (idempotent, will upsert)
-    const indexScript = path.join(projectDir, 'scripts', 'context_graph_index.py');
+    const indexScript = path.join(projectDir, 'scripts', 'artifact_index.py');
 
     if (fs.existsSync(indexScript)) {
       const child = spawn('uv', ['run', 'python', indexScript, '--file', fullPath], {
