@@ -10,6 +10,7 @@
 #   ~/.claude/rules/      - Replaced entirely
 #   ~/.claude/hooks/      - Replaced entirely
 #   ~/.claude/scripts/    - Files added/overwritten
+#   ~/.claude/plugins/braintrust-tracing/ - Replaced
 #   ~/.claude/settings.json - Replaced (backup created)
 #
 # ✓ Preserved:
@@ -61,6 +62,10 @@ echo "Copying scripts..."
 mkdir -p "$GLOBAL_DIR/scripts"
 cp "$SCRIPT_DIR/scripts/"*.py "$GLOBAL_DIR/scripts/" 2>/dev/null || true
 cp "$SCRIPT_DIR/.claude/scripts/"*.sh "$GLOBAL_DIR/scripts/" 2>/dev/null || true
+
+echo "Copying plugins..."
+mkdir -p "$GLOBAL_DIR/plugins"
+cp -r "$SCRIPT_DIR/.claude/plugins/braintrust-tracing" "$GLOBAL_DIR/plugins/" 2>/dev/null || true
 
 # Copy settings.json (use project version as base)
 echo "Installing settings.json..."
