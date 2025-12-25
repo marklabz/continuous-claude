@@ -137,3 +137,18 @@ class McpConfig(BaseModel):
             JSONDecodeError: If JSON is malformed
         """
         return cls.model_validate_json(json_str)
+
+    def merge(self, other: "McpConfig") -> "McpConfig":
+        """Merge another config into this one, with other taking precedence.
+
+        This is used to merge global config with project config, where
+        project config overrides global for servers with the same name.
+
+        Args:
+            other: Config to merge (takes precedence on conflicts)
+
+        Returns:
+            New McpConfig with merged servers
+        """
+        merged_servers = {**self.mcpServers, **other.mcpServers}
+        return McpConfig(mcpServers=merged_servers)

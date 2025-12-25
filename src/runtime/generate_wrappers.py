@@ -194,7 +194,7 @@ async def generate_wrappers(config_path: Path | None = None) -> None:
     """
     Main wrapper generation orchestrator.
 
-    1. Load config from .mcp.json or mcp_config.json
+    1. Load config from global + project (merged, project overrides)
     2. For each server:
        a. Connect and list tools
        b. Generate wrappers
@@ -202,38 +202,72 @@ async def generate_wrappers(config_path: Path | None = None) -> None:
     3. Generate top-level __init__.py
 
     Args:
-        config_path: Path to config file. If not provided, checks .mcp.json
-                    first (Claude Code convention), then mcp_config.json
+        config_path: Path to config file. If provided, uses only that file.
+                    Otherwise merges global (~/.claude/mcp_config.json) with
+                    project config (.mcp.json or mcp_config.json)
     """
     logger.info("Starting wrapper generation...")
-
-    # Load config with fallback
-    if config_path:
-        config_file = config_path
-    else:
-        mcp_json = Path.cwd() / ".mcp.json"
-        mcp_config_json = Path.cwd() / "mcp_config.json"
-        if mcp_json.exists():
-            config_file = mcp_json
-        elif mcp_config_json.exists():
-            config_file = mcp_config_json
-        else:
-            logger.error("No config file found. Expected .mcp.json or mcp_config.json")
-            return
-
-    if not config_file.exists():
-        logger.error(f"Config file not found: {config_file}")
-        return
-
-    logger.info(f"Using config: {config_file}")
 
     import aiofiles
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
-    async with aiofiles.open(config_file) as f:
-        content = await f.read()
-    config = McpConfig.model_validate_json(content)
+    # Load config with merging support
+    if config_path:
+        if not config_path.exists():
+            logger.error(f"Config file not found: {config_path}")
+            return
+        logger.info(f"Using explicit config: {config_path}")
+        async with aiofiles.open(config_path) as f:
+            content = await f.read()
+        config = McpConfig.model_validate_json(content)
+    else:
+        # Config merging: global + project (project overrides)
+        mcp_json = Path.cwd() / ".mcp.json"
+        mcp_config_json = Path.cwd() / "mcp_config.json"
+        global_config = Path.home() / ".claude" / "mcp_config.json"
+
+        global_cfg: McpConfig | None = None
+        project_cfg: McpConfig | None = None
+
+        # Load global config if exists
+        if global_config.exists():
+            try:
+                async with aiofiles.open(global_config) as f:
+                    content = await f.read()
+                global_cfg = McpConfig.model_validate_json(content)
+                logger.info(f"Loaded global config: {global_config} ({len(global_cfg.mcpServers)} servers)")
+            except Exception as e:
+                logger.warning(f"Failed to load global config {global_config}: {e}")
+
+        # Load project config if exists
+        project_config_file = None
+        if mcp_json.exists():
+            project_config_file = mcp_json
+        elif mcp_config_json.exists():
+            project_config_file = mcp_config_json
+
+        if project_config_file:
+            try:
+                async with aiofiles.open(project_config_file) as f:
+                    content = await f.read()
+                project_cfg = McpConfig.model_validate_json(content)
+                logger.info(f"Loaded project config: {project_config_file} ({len(project_cfg.mcpServers)} servers)")
+            except Exception as e:
+                logger.error(f"Failed to load project config {project_config_file}: {e}")
+                return
+
+        # Merge configs (project overrides global)
+        if global_cfg and project_cfg:
+            config = global_cfg.merge(project_cfg)
+            logger.info(f"Merged configs: {len(config.mcpServers)} servers total")
+        elif project_cfg:
+            config = project_cfg
+        elif global_cfg:
+            config = global_cfg
+        else:
+            logger.error("No config file found. Expected .mcp.json or mcp_config.json, or global ~/.claude/mcp_config.json")
+            return
 
     # Output directory
     output_dir = Path(__file__).parent.parent.parent / "servers"

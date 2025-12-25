@@ -73,6 +73,17 @@ if ! command -v uv &> /dev/null; then
     echo ""
 fi
 
+# Install MCP runtime package globally (makes mcp-exec, mcp-generate available everywhere)
+echo "Installing MCP runtime package globally..."
+cd "$SCRIPT_DIR"
+uv tool install . --force --quiet 2>/dev/null || {
+    echo "⚠️  Could not install MCP package globally. Run manually:"
+    echo "   cd $SCRIPT_DIR && uv tool install . --force"
+}
+echo "✓ MCP commands installed: mcp-exec, mcp-generate, mcp-discover"
+echo "  (available in ~/.local/bin/)"
+echo ""
+
 # Create global dir if needed
 mkdir -p "$GLOBAL_DIR"
 
@@ -110,6 +121,11 @@ cp "$SCRIPT_DIR/scripts/"*.py "$GLOBAL_DIR/scripts/" 2>/dev/null || true
 cp "$SCRIPT_DIR/.claude/scripts/"*.sh "$GLOBAL_DIR/scripts/" 2>/dev/null || true
 cp "$SCRIPT_DIR/init-project.sh" "$GLOBAL_DIR/scripts/" 2>/dev/null || true
 cp "$SCRIPT_DIR/scripts/artifact_schema.sql" "$GLOBAL_DIR/scripts/" 2>/dev/null || true
+
+echo "Copying MCP config..."
+cp "$SCRIPT_DIR/mcp_config.json" "$GLOBAL_DIR/mcp_config.json"
+echo "  → Global MCP servers available in all projects"
+echo "  → Project configs override/extend global (config merging)"
 
 echo "Copying plugins..."
 mkdir -p "$GLOBAL_DIR/plugins"
@@ -192,6 +208,8 @@ elif [ -f "$CLAUDE_JSON" ] && ! command -v jq &> /dev/null; then
 fi
 
 echo "Features now available in any project:"
+echo "  - MCP commands: mcp-exec, mcp-generate (from any directory)"
+echo "  - Global MCP config: ~/.claude/mcp_config.json (merged with project)"
 echo "  - Continuity ledger (/continuity_ledger)"
 echo "  - Handoffs (/create_handoff, /resume_handoff)"
 echo "  - TDD workflow (auto-activates on 'implement', 'fix bug')"

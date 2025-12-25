@@ -145,59 +145,92 @@ class McpClientManager:
     async def initialize(self, config_path: Path | None = None) -> None:
         """Initialize the manager by loading configuration.
 
-        This method loads the MCP configuration from a JSON file but does NOT
+        This method loads the MCP configuration from JSON files but does NOT
         establish any server connections. Connections are established lazily
         on the first tool call.
 
+        Config merging: If both global (~/.claude/mcp_config.json) and project
+        configs exist, they are merged with project config taking precedence
+        for servers with the same name.
+
         Args:
             config_path: Optional path to config file. If not provided,
-                        checks for .mcp.json first (Claude Code convention),
-                        then mcp_config.json, then ~/.claude/mcp_config.json (global)
+                        merges global config with project config (.mcp.json or mcp_config.json)
 
         Raises:
-            ConfigurationError: If config file is missing, malformed, or invalid
+            ConfigurationError: If no config file is found or config is invalid
         """
         self._validate_state(ConnectionState.UNINITIALIZED, "initialize")
 
-        # Determine config file path with fallback
+        # If explicit path provided, use only that
         if config_path:
-            config_file = config_path
+            if not config_path.exists():
+                raise ConfigurationError(f"Config file not found: {config_path}")
+            try:
+                async with aiofiles.open(config_path) as f:
+                    content = await f.read()
+                self._config = McpConfig.model_validate_json(content)
+            except json.JSONDecodeError as e:
+                raise ConfigurationError(f"Invalid JSON in config file {config_path}: {e}")
+            except Exception as e:
+                raise ConfigurationError(f"Failed to load config from {config_path}: {e}")
         else:
-            # Check .mcp.json first (Claude Code convention), then mcp_config.json,
-            # then global ~/.claude/mcp_config.json
+            # Config merging: global + project (project overrides)
             mcp_json = Path.cwd() / ".mcp.json"
             mcp_config_json = Path.cwd() / "mcp_config.json"
             global_config = Path.home() / ".claude" / "mcp_config.json"
+
+            global_cfg: McpConfig | None = None
+            project_cfg: McpConfig | None = None
+
+            # Load global config if exists
+            if global_config.exists():
+                try:
+                    async with aiofiles.open(global_config) as f:
+                        content = await f.read()
+                    global_cfg = McpConfig.model_validate_json(content)
+                    logger.info(f"Loaded global config: {global_config} ({len(global_cfg.mcpServers)} servers)")
+                except Exception as e:
+                    logger.warning(f"Failed to load global config {global_config}: {e}")
+
+            # Load project config if exists (prefer .mcp.json over mcp_config.json)
+            project_config_file = None
             if mcp_json.exists():
-                config_file = mcp_json
+                project_config_file = mcp_json
             elif mcp_config_json.exists():
-                config_file = mcp_config_json
-            elif global_config.exists():
-                config_file = global_config
-                logger.info(f"Using global config: {global_config}")
+                project_config_file = mcp_config_json
+
+            if project_config_file:
+                try:
+                    async with aiofiles.open(project_config_file) as f:
+                        content = await f.read()
+                    project_cfg = McpConfig.model_validate_json(content)
+                    logger.info(f"Loaded project config: {project_config_file} ({len(project_cfg.mcpServers)} servers)")
+                except json.JSONDecodeError as e:
+                    raise ConfigurationError(f"Invalid JSON in config file {project_config_file}: {e}")
+                except Exception as e:
+                    raise ConfigurationError(f"Failed to load config from {project_config_file}: {e}")
+
+            # Merge configs (project overrides global)
+            if global_cfg and project_cfg:
+                self._config = global_cfg.merge(project_cfg)
+                logger.info(f"Merged configs: {len(self._config.mcpServers)} servers total")
+            elif project_cfg:
+                self._config = project_cfg
+            elif global_cfg:
+                self._config = global_cfg
             else:
                 raise ConfigurationError(
                     f"No config file found. Expected .mcp.json or mcp_config.json in {Path.cwd()}, "
                     f"or global config at {global_config}"
                 )
 
-        if not config_file.exists():
-            raise ConfigurationError(f"Config file not found: {config_file}")
-
-        try:
-            async with aiofiles.open(config_file) as f:
-                content = await f.read()
-            self._config = McpConfig.model_validate_json(content)
-            enabled_count = len(self._config.get_enabled_servers())
-            logger.info(
-                f"Configuration loaded: {len(self._config.mcpServers)} servers total, "
-                f"{enabled_count} enabled"
-            )
-            self._mark_initialized()
-        except json.JSONDecodeError as e:
-            raise ConfigurationError(f"Invalid JSON in config file {config_file}: {e}")
-        except Exception as e:
-            raise ConfigurationError(f"Failed to load config from {config_file}: {e}")
+        enabled_count = len(self._config.get_enabled_servers())
+        logger.info(
+            f"Configuration loaded: {len(self._config.mcpServers)} servers total, "
+            f"{enabled_count} enabled"
+        )
+        self._mark_initialized()
 
     async def _connect_to_server(self, server_name: str, config: ServerConfig) -> None:
         """Establish connection to a single MCP server on-demand.
