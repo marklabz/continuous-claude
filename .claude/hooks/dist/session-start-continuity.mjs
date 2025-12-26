@@ -2,6 +2,25 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
+function pruneLedger(ledgerPath) {
+  let content = fs.readFileSync(ledgerPath, "utf-8");
+  const originalLength = content.length;
+  content = content.replace(/\n### Session Ended \([^)]+\)\n- Reason: \w+\n/g, "");
+  const agentReportsMatch = content.match(/## Agent Reports\n([\s\S]*?)(?=\n## |$)/);
+  if (agentReportsMatch) {
+    const agentReportsSection = agentReportsMatch[0];
+    const reports = agentReportsSection.match(/### [^\n]+ \(\d{4}-\d{2}-\d{2}[^)]*\)[\s\S]*?(?=\n### |\n## |$)/g);
+    if (reports && reports.length > 10) {
+      const keptReports = reports.slice(-10);
+      const newAgentReportsSection = "## Agent Reports\n" + keptReports.join("");
+      content = content.replace(agentReportsSection, newAgentReportsSection);
+    }
+  }
+  if (content.length !== originalLength) {
+    fs.writeFileSync(ledgerPath, content);
+    console.error(`Pruned ledger: ${originalLength} \u2192 ${content.length} bytes`);
+  }
+}
 function getLatestHandoff(handoffDir) {
   if (!fs.existsSync(handoffDir)) return null;
   const handoffFiles = fs.readdirSync(handoffDir).filter((f) => (f.startsWith("task-") || f.startsWith("auto-handoff-")) && f.endsWith(".md")).sort((a, b) => {
@@ -80,6 +99,7 @@ async function main() {
   if (ledgerFiles.length > 0) {
     const mostRecent = ledgerFiles[0];
     const ledgerPath = path.join(ledgerDir, mostRecent);
+    pruneLedger(ledgerPath);
     const ledgerContent = fs.readFileSync(ledgerPath, "utf-8");
     const goalMatch = ledgerContent.match(/## Goal\n([\s\S]*?)(?=\n## |$)/);
     const nowMatch = ledgerContent.match(/- Now: ([^\n]+)/);

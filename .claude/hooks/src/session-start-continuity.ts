@@ -16,6 +16,39 @@ interface HandoffSummary {
   isAutoHandoff: boolean;
 }
 
+/**
+ * Prune ledger to prevent bloat:
+ * 1. Remove all "Session Ended" entries
+ * 2. Keep only the last 10 agent reports
+ */
+function pruneLedger(ledgerPath: string): void {
+  let content = fs.readFileSync(ledgerPath, 'utf-8');
+  const originalLength = content.length;
+
+  // 1. Remove all "Session Ended" entries
+  content = content.replace(/\n### Session Ended \([^)]+\)\n- Reason: \w+\n/g, '');
+
+  // 2. Keep only the last 10 agent reports
+  const agentReportsMatch = content.match(/## Agent Reports\n([\s\S]*?)(?=\n## |$)/);
+  if (agentReportsMatch) {
+    const agentReportsSection = agentReportsMatch[0];
+    const reports = agentReportsSection.match(/### [^\n]+ \(\d{4}-\d{2}-\d{2}[^)]*\)[\s\S]*?(?=\n### |\n## |$)/g);
+
+    if (reports && reports.length > 10) {
+      // Keep only the last 10 reports
+      const keptReports = reports.slice(-10);
+      const newAgentReportsSection = '## Agent Reports\n' + keptReports.join('');
+      content = content.replace(agentReportsSection, newAgentReportsSection);
+    }
+  }
+
+  // Only write if content changed
+  if (content.length !== originalLength) {
+    fs.writeFileSync(ledgerPath, content);
+    console.error(`Pruned ledger: ${originalLength} → ${content.length} bytes`);
+  }
+}
+
 function getLatestHandoff(handoffDir: string): HandoffSummary | null {
   if (!fs.existsSync(handoffDir)) return null;
 
@@ -145,6 +178,10 @@ async function main() {
   if (ledgerFiles.length > 0) {
     const mostRecent = ledgerFiles[0];
     const ledgerPath = path.join(ledgerDir, mostRecent);
+
+    // Prune ledger before reading to prevent bloat
+    pruneLedger(ledgerPath);
+
     const ledgerContent = fs.readFileSync(ledgerPath, 'utf-8');
 
     // Extract key sections for summary

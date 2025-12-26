@@ -35,16 +35,8 @@ async function main() {
         `Updated: ${timestamp}`
       );
 
-      // Add session end note if not auto-compacting
-      if (input.reason !== 'other') {
-        const endNote = `\n### Session Ended (${timestamp})\n- Reason: ${input.reason}\n`;
-
-        // Find Agent Reports section or end of file
-        const agentReportsMatch = content.indexOf('## Agent Reports');
-        if (agentReportsMatch > 0) {
-          content = content.slice(0, agentReportsMatch) + endNote + content.slice(agentReportsMatch);
-        }
-      }
+      // Session end notes removed - caused ledger bloat
+      // Timestamp update above is sufficient for tracking
 
       fs.writeFileSync(ledgerPath, content);
     }

@@ -21,16 +21,6 @@ async function main() {
         /Updated: .*/,
         `Updated: ${timestamp}`
       );
-      if (input.reason !== "other") {
-        const endNote = `
-### Session Ended (${timestamp})
-- Reason: ${input.reason}
-`;
-        const agentReportsMatch = content.indexOf("## Agent Reports");
-        if (agentReportsMatch > 0) {
-          content = content.slice(0, agentReportsMatch) + endNote + content.slice(agentReportsMatch);
-        }
-      }
       fs.writeFileSync(ledgerPath, content);
     }
     const agentCacheDir = path.join(projectDir, ".claude", "cache", "agents");
